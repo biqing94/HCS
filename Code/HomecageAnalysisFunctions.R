@@ -15,10 +15,9 @@ using("tidyverse", "openxlsx", "reshape2", "data.table", "readxl", "DT")
 
 # reads and aggregates data for one animal/one day
 # creates a data-frame
-read_file <- function(filename, start.value, rename_variable = NULL, breaks=NULL, labels=NULL, combine=NULL){
+read_file <- function(filename, start.value, rename_variable = NULL, breaks=NULL, combine=NULL){
   rename_variable = unlist(rename_variable)
   breaks = unlist(breaks)
-  labels = unlist(labels)
   combine = unlist(combine)
   
   data = read_excel(filename)
@@ -45,6 +44,10 @@ read_file <- function(filename, start.value, rename_variable = NULL, breaks=NULL
       }
   }
   
+  # Change bins to 1 - 630
+  data = data[order(data$Bin),]
+  data$Bin = 1:630
+  
   # Rename variables e.g. rename_variable = c(Turn = "Turning")
   if(!is.null(rename_variable)){
     names(data) = dplyr::recode(names(data), !!!rename_variable)
@@ -53,8 +56,8 @@ read_file <- function(filename, start.value, rename_variable = NULL, breaks=NULL
   # For more breakdowns, specify, for example breaks=c(1,250,500,+Inf); labels=c("Morning","Noon","Evening")
   # Create aggregation variable
   data$Interval = NA
-  if(!is.null(breaks) & !is.null(labels)){
-    data$Interval = cut(data$Bin,breaks=breaks,labels=labels,include.lowest = TRUE)
+  if(!is.null(breaks)){
+    data$Interval = cut(data$Bin,breaks=breaks,include.lowest = TRUE)
   } else{
     data$Interval = "Day"
   }
@@ -71,14 +74,15 @@ read_file <- function(filename, start.value, rename_variable = NULL, breaks=NULL
   
   # Combining behaviours/activities e.g. combine=c(ComeDown = "ComeDown + RearUp", RearUp = "ComeDown + RearUp")
   if (!is.null(combine)) {
-    for(i in unique(combine)){
-      combine_columns = names(combine)[which(combine == i)]
+    combinedat = read_excel(combine)
+    for(i in unique(combinedat$`Combined Behavior`)){
+      combine_columns = combinedat$Behavior[which(combinedat$`Combined Behavior`==i)]
       summary_data = summary_data %>%
-                       mutate(V1 = rowSums(summary_data[,combine_columns])) 
+        mutate(V1 = rowSums(summary_data[,combine_columns])) 
       names(summary_data)[names(summary_data)=="V1"] = i
-          
+      
       fraction_data = fraction_data %>%
-                        mutate(V1 = rowSums(fraction_data[,combine_columns])) 
+        mutate(V1 = rowSums(fraction_data[,combine_columns])) 
       names(fraction_data)[names(fraction_data)=="V1"] = i
       
       # Remove the activities combined to avoid summing twice in aggregate_by in next function
@@ -101,6 +105,10 @@ read_file <- function(filename, start.value, rename_variable = NULL, breaks=NULL
   
   summary_data = summary_data[order(summary_data$Interval),]
   fraction_data = fraction_data[order(fraction_data$Interval),]
+  
+  # Remove rows Activity == SUM from data
+  summary_data = summary_data[-grep("SUM",summary_data$Activity),]
+  fraction_data = fraction_data[-grep("SUM",fraction_data$Activity),]
 
   return(list("summary" = summary_data, "fraction" = fraction_data))
 } 
@@ -108,7 +116,7 @@ read_file <- function(filename, start.value, rename_variable = NULL, breaks=NULL
 
 
 process_metafile <- function(metaData, datapath, aggregate_by=NULL, 
-                             args_list = list(start.value=59.99, rename_variable = NULL, breaks=NULL, labels=NULL, combine=NULL)){
+                             args_list = list(start.value=59.99, rename_variable = NULL, breaks=NULL, combine=NULL)){
   # reads in metadata
   #metaData = read_excel(metadatafile)
   metaData$Filename = file.path(datapath, paste0(metaData$Filename, ".xlsx"))
@@ -173,7 +181,12 @@ process_metafile <- function(metaData, datapath, aggregate_by=NULL,
   
   # Write to excel
   #write.xlsx(list("Fraction" = fraction_all_data,"Summation" = summary_all_data), summary_file, col.names = TRUE, row.names = FALSE, append = FALSE, showNA = FALSE) 
-
+  
+  # Change to factor so that it shows a drop down list in filter
+  cols = c("AnimalID", "Genotype", "Sex", "Interval","Activity")
+  summary_all_data[,cols] <- lapply(summary_all_data[,cols], factor)
+  fraction_all_data[,cols] <- lapply(fraction_all_data[,cols], factor)
+  
   return(list("summary_all" = summary_all_data, "fraction_all" = fraction_all_data))
 }
 
