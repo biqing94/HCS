@@ -3,6 +3,8 @@ using("shiny", "shinyFiles", "shinybusy", "readxl")
 
 # Define UI 
 ui <- fluidPage(
+    # Unbold text input labels bin breaks 1, bin breaks 2
+    tags$head(tags$style(HTML("label {font-weight: 500}"))),
 
     # Application title
     titlePanel("HomeCageScan"),
@@ -18,12 +20,21 @@ ui <- fluidPage(
                            title="Choose the directory containing all your HCS data"),
             verbatimTextOutput("dirname", placeholder = TRUE) ,
             hr(),
+            shinyFilesButton("behaviorsfile", label="Combine behaviors", 
+                             title="Choose file to combine behaviors", multiple=FALSE),
+            splitLayout(cellWidths = c("80%", "20%"), 
+                        verbatimTextOutput("bname", placeholder = TRUE), 
+                        actionButton("reset_behaviorsfile", label = "Reset")),
+            splitLayout(cellWidths = c("30%", "30%"),
+                        textInput("break1", label="Bin break 1",value="1",width="60px"), 
+                        textInput("break2", label="Bin break 2",value="630",width="60px")),
+            hr(),
             actionButton("loaddata", "Load data"),
             hr(),
             radioButtons("format", label = "Output format", choices=c("Rectangular", "for Prism"),
                                                                inline = TRUE),
             shinySaveButton("savedata", label = "Export data",
-                            title = "Save exported data as...", filetype="xlsx"),
+                            title = "Save exported data as...", filetype="xlsx")
            ),
 
         # Show data table of master file
@@ -33,7 +44,7 @@ ui <- fluidPage(
             tabPanel("Summary data", 
                      radioButtons("sumfrac", label = "Value type", choices=c("Sum", "Fraction"),
                                   inline = TRUE),
-                     dataTableOutput("summaryTable"))
+                     dataTableOutput("summaryTable",width="150%"))
           )
         )
     )
@@ -45,8 +56,44 @@ server <- function(input, output, session) {
     values <- reactiveValues(
         datapath = "",
         mastername = "",
+        behaviorsname = NULL,
+        binbreaks1 = 0,
+        binbreaks2 = 0,
         sum_data = NULL
     )
+    
+    # load file to combine behaviors
+    shinyFileChoose(input, 'behaviorsfile', roots=c(volumes), filetypes=c('', 'xlsx'))
+  
+    observeEvent(
+      ignoreNULL = TRUE,
+      eventExpr = {input$behaviorsfile},
+      handlerExpr = {
+        values$behaviorsname <- parseFilePaths(roots=volumes, input$behaviorsfile)$datapath
+    })
+      
+    output$bname <- renderText({
+      values$behaviorsname
+    })  
+
+    observeEvent(input$reset_behaviorsfile, {
+      values$behaviorsname = NULL
+    })
+    
+  
+    # Bin breaks    
+    observeEvent({
+      input$break1 
+      input$break2},
+      handlerExpr = {
+        if(input$break1!=0){
+          values$binbreaks1 <- as.numeric(input$break1)
+        }
+        if(input$break2!=0){
+          values$binbreaks2 <- as.numeric(input$break2)
+          }
+        },
+      ignoreNULL = TRUE)
     
     
     # load master file
@@ -87,8 +134,10 @@ server <- function(input, output, session) {
     output$masterTable<- renderDataTable(
         master(),
         options = list(pageLength = 10)
+        
     )
     
+     
     # load and summarize data
     summary_data <- reactive({
       req(values$sum_data)
@@ -97,6 +146,16 @@ server <- function(input, output, session) {
              "Fraction" = values$sum_data$fraction_all)
     })
     
+    # Subset data when filter is applied
+    summary_data_subset <- reactive({
+      req(values$sum_data)
+      
+      # Indices of filtered rows
+      s = input$summaryTable_rows_all
+      switch(input$sumfrac,
+             "Sum" = values$sum_data$summary_all[s,],
+             "Fraction" = values$sum_data$fraction_all[s,])
+    })
     
      observeEvent(input$loaddata, {
        updateTabsetPanel(session, "tabset",
@@ -108,17 +167,18 @@ server <- function(input, output, session) {
                        aggregate_by = NULL, 
                        args_list = list(start.value=59.99, 
                                         rename_variable = NULL, 
-                                        breaks=NULL, 
-                                        labels=NULL, 
-                                        combine=NULL))
+                                        breaks=unique(c(1,values$binbreaks1,values$binbreaks2,630)), 
+                                        combine=values$behaviorsname))
        remove_modal_spinner()
     })
      
-     # display summarized data
+    # display summarized data
     output$summaryTable<- renderDataTable(
-      summary_data(), 
-      options = list(pageLength=10)
-    )
+      summary_data(),
+      filter="top",
+      options = list(pageLength=10,
+                     columnDefs=list(list(width = '200px',targets = "_all", class="dt-head-center dt-center")))
+    ) 
     
     # export data
     observeEvent(
@@ -130,11 +190,11 @@ server <- function(input, output, session) {
         req(outfile)
         
         if (input$format == "Rectangular"){
-          outlist <- list(summary_data()) 
+          outlist <- list(summary_data_subset()) 
           names(outlist) <- input$sumfrac
           write.xlsx(outlist, outfile, col.names = TRUE, row.names = FALSE, append = FALSE, showNA = FALSE) 
         } else if (input$format == "for Prism"){
-          export_for_Prism(summary_data(), filter = NULL, outfilename=outfile)
+          export_for_Prism(summary_data_subset(), filter = NULL, outfilename=outfile)
         }
         showNotification(paste("Data saved to", outfile), type="message")
       })
@@ -142,3 +202,4 @@ server <- function(input, output, session) {
 
 # Run the application 
 shinyApp(ui = ui, server = server)
+
