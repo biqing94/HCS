@@ -44,9 +44,9 @@ read_file <- function(filename, start.value, rename_variable = NULL, breaks=NULL
       }
   }
   
-  # Change bins to 1 - 630
+  # Change bins to 0 - 629th minutes
   data = data[order(data$Bin),]
-  data$Bin = 1:630
+  data$Bin = 0:629
   
   # Rename variables e.g. rename_variable = c(Turn = "Turning")
   if(!is.null(rename_variable)){
@@ -57,7 +57,7 @@ read_file <- function(filename, start.value, rename_variable = NULL, breaks=NULL
   # Create aggregation variable
   data$Interval = NA
   if(!is.null(breaks)){
-    data$Interval = cut(data$Bin,breaks=breaks,include.lowest = TRUE)
+    data$Interval = cut(data$Bin,breaks=breaks,include.lowest = TRUE,right=FALSE)
   } else{
     data$Interval = "Day"
   }
@@ -182,10 +182,15 @@ process_metafile <- function(metaData, datapath, aggregate_by=NULL,
   # Write to excel
   #write.xlsx(list("Fraction" = fraction_all_data,"Summation" = summary_all_data), summary_file, col.names = TRUE, row.names = FALSE, append = FALSE, showNA = FALSE) 
   
+  # Change labelling for Interval (bin breaks) to show that 629th minute is included 
+  summary_all_data$Interval = gsub("629]","630)",summary_all_data$Interval)
+  fraction_all_data$Interval = gsub("629]","630)",fraction_all_data$Interval)
+  
   # Change to factor so that it shows a drop down list in filter
   cols = c("AnimalID", "Genotype", "Sex", "Interval","Activity")
   summary_all_data[,cols] <- lapply(summary_all_data[,cols], factor)
   fraction_all_data[,cols] <- lapply(fraction_all_data[,cols], factor)
+  
   
   return(list("summary_all" = summary_all_data, "fraction_all" = fraction_all_data))
 }
@@ -226,4 +231,5 @@ export_for_Prism <- function(data, filter = NULL, outfilename){
   # Write to excel
   write.xlsx(PrismData, outfilename, col.names = FALSE, row.names = FALSE, append = TRUE, showNA = FALSE) 
 }
+
 
