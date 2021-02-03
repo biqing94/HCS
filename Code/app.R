@@ -24,10 +24,9 @@ ui <- fluidPage(
                              title="Choose file to combine behaviors", multiple=FALSE),
             splitLayout(cellWidths = c("80%", "20%"), 
                         verbatimTextOutput("bname", placeholder = TRUE), 
-                        actionButton("reset_behaviorsfile", label = "Reset")),
-            splitLayout(cellWidths = c("30%", "30%"),
-                        textInput("break1", label="Bin break 1",value="1",width="60px"), 
-                        textInput("break2", label="Bin break 2",value="630",width="60px")),
+                        actionButton("clear_behaviorsfile", label = "Clear")),
+            textInput("break_list", label="Bin breaks (unit = minutes)", 
+                      placeholder = "Enter values separated by a comma...",width="500px"),
             hr(),
             actionButton("loaddata", "Load data"),
             hr(),
@@ -57,8 +56,7 @@ server <- function(input, output, session) {
         datapath = "",
         mastername = "",
         behaviorsname = NULL,
-        binbreaks1 = 0,
-        binbreaks2 = 0,
+        binbreaks = NULL,
         sum_data = NULL
     )
     
@@ -76,24 +74,25 @@ server <- function(input, output, session) {
       values$behaviorsname
     })  
 
-    observeEvent(input$reset_behaviorsfile, {
+    observeEvent(input$clear_behaviorsfile, {
       values$behaviorsname = NULL
     })
     
   
-    # Bin breaks    
-    observeEvent({
-      input$break1 
-      input$break2},
+    # Bin breaks
+    # Extract text list as numeric
+    extract <- function(text) {
+      text <- gsub(" ", "", text)
+      split <- strsplit(text, ",", fixed = FALSE)
+      as.numeric(unlist(split))
+    }
+    
+    observeEvent(
+      ignoreNULL = TRUE,
+      eventExpr = {input$break_list},
       handlerExpr = {
-        if(input$break1!=0){
-          values$binbreaks1 <- as.numeric(input$break1)
-        }
-        if(input$break2!=0){
-          values$binbreaks2 <- as.numeric(input$break2)
-          }
-        },
-      ignoreNULL = TRUE)
+        values$binbreaks <- extract(input$break_list)
+      })
     
     
     # load master file
@@ -167,7 +166,7 @@ server <- function(input, output, session) {
                        aggregate_by = NULL, 
                        args_list = list(start.value=59.99, 
                                         rename_variable = NULL, 
-                                        breaks=unique(c(1,values$binbreaks1,values$binbreaks2,630)), 
+                                        breaks=unique(c(0,629,values$binbreaks)), 
                                         combine=values$behaviorsname))
        remove_modal_spinner()
     })
@@ -202,4 +201,3 @@ server <- function(input, output, session) {
 
 # Run the application 
 shinyApp(ui = ui, server = server)
-
